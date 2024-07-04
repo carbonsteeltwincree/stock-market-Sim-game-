@@ -1,0 +1,172 @@
+import tkinter as tk
+from tkinter import ttk, simpledialog, messagebox
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
+
+class StockMarketSimulator:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Stock Market Simulator")
+        self.root.geometry("800x600")
+
+        # Initial money and shares variables
+        self.money = 100  # Starting money
+        self.shares = 0  # Starting shares
+
+        # Starting stock price
+        self.stock_price = 14.36  # Starting stock price
+
+        # Parameters for stock price simulation
+        self.mu = 0.0005  # Drift component
+        self.sigma = 0.01  # Volatility component
+
+        # Create a frame for the top section (for the money and shares labels)
+        self.top_frame = tk.Frame(root)
+        self.top_frame.pack(side=tk.TOP, fill=tk.X)
+
+        # Create a label to display the money variable
+        self.money_label = tk.Label(self.top_frame, text=f"Money: ${self.money:.2f}", font=("Arial", 16))
+        self.money_label.pack(side=tk.LEFT, padx=10, pady=10)
+
+        # Create a label to display the net worth variable
+        self.net_worth_label = tk.Label(self.top_frame, text=f"Net Worth: ${self.money:.2f}", font=("Arial", 16))
+        self.net_worth_label.pack(side=tk.TOP, fill=tk.X, padx=10, pady=(10, 0))  # Adjust pady to center vertically
+
+        # Create a label to display the shares variable
+        self.shares_label = tk.Label(self.top_frame, text=f"Shares: {self.shares}", font=("Arial", 16))
+        self.shares_label.pack(side=tk.RIGHT, padx=10, pady=10)
+
+        # Create a frame for the graph
+        self.frame = ttk.Frame(root)
+        self.frame.pack(fill=tk.BOTH, expand=True)
+
+        # Create initial plot
+        self.fig = Figure(figsize=(5, 4), dpi=100)
+        self.ax = self.fig.add_subplot(1, 1, 1)
+        self.line, = self.ax.plot([], [], marker='o', color='black')  # Initialize line with black color
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # Create buttons for buying and selling
+        self.buy_button = tk.Button(root, text="Buy", command=self.buy_shares)
+        self.buy_button.pack(side=tk.LEFT, padx=10, pady=10)
+
+        self.sell_button = tk.Button(root, text="Sell", command=self.sell_shares)
+        self.sell_button.pack(side=tk.RIGHT, padx=10, pady=10)
+
+        # Create a button to start the simulation
+        self.start_button = tk.Button(root, text="Start Simulation", command=self.start_simulation)
+        self.start_button.pack(pady=20)
+
+        # Initial time
+        self.time = 0
+        self.prices = [self.stock_price]
+        self.times = [self.time]
+
+        # Flag to indicate if the simulation is running
+        self.simulation_running = False
+
+    def start_simulation(self):
+        self.simulation_running = True
+        self.update_stock_price()
+
+    def pause_simulation(self):
+        self.simulation_running = False
+
+    def update_stock_price(self):
+        if not self.simulation_running:
+            return
+
+        # Simulate stock price change using geometric Brownian motion
+        dt = 1
+        price_change = self.stock_price * (self.mu * dt + self.sigma * np.random.normal())
+        old_price = self.stock_price
+        self.stock_price += price_change
+        self.time += 1
+
+        # Update data
+        self.prices.append(self.stock_price)
+        self.times.append(self.time)
+
+        # Update money, shares, and net worth labels
+        self.money_label.config(text=f"Money: ${self.money:.2f}")
+        self.shares_label.config(text=f"Shares: {self.shares}")
+        net_worth = self.money + (self.shares * self.stock_price)
+        self.net_worth_label.config(text=f"Net Worth: ${net_worth:.2f}")
+
+        # Update line color based on price change direction
+        if price_change < 0:
+            line_color = 'red'
+        else:
+            line_color = 'green'
+
+        # Update the line with new data and color
+        self.line.set_data(self.times, self.prices)
+        self.line.set_color(line_color)
+
+        # Clear the axis and plot the new line segment by segment
+        self.ax.clear()
+        for i in range(len(self.times) - 1):
+            x = [self.times[i], self.times[i + 1]]
+            y = [self.prices[i], self.prices[i + 1]]
+            if self.prices[i + 1] > self.prices[i]:
+                self.ax.plot(x, y, color='green', linewidth=2)
+            else:
+                self.ax.plot(x, y, color='red', linewidth=2)
+
+        # Adjust plot limits for better visualization
+        self.ax.set_xlim(0, self.time + 1)
+        self.ax.set_ylim(min(self.prices) - 1, max(self.prices) + 1)
+
+        # Redraw the canvas
+        self.canvas.draw()
+
+        # Schedule the next update
+        self.root.after(2000, self.update_stock_price)  # Update every 2 seconds
+
+    def buy_shares(self):
+        self.pause_simulation()  # Pause simulation
+
+        # Ask the user how many shares they want to buy
+        amount = simpledialog.askinteger("Buy Shares", f"Enter amount of shares to buy at ${self.stock_price:.2f} per share:")
+        if amount is not None:
+            cost = amount * self.stock_price
+            if cost <= self.money:
+                self.money -= cost
+                self.shares += amount
+                self.money_label.config(text=f"Money: ${self.money:.2f}")
+                self.shares_label.config(text=f"Shares: {self.shares}")
+            else:
+                messagebox.showerror("Error", "Not enough money to buy the shares.")
+
+        self.resume_simulation()  # Resume simulation
+
+    def sell_shares(self):
+        self.pause_simulation()  # Pause simulation
+
+        # Ask the user how many shares they want to sell
+        amount = simpledialog.askinteger("Sell Shares", f"Enter amount of shares to sell at ${self.stock_price:.2f} per share:")
+        if amount is not None:
+            if amount <= self.shares:
+                revenue = amount * self.stock_price
+                self.money += revenue
+                self.shares -= amount
+                self.money_label.config(text=f"Money: ${self.money:.2f}")
+                self.shares_label.config(text=f"Shares: {self.shares}")
+            else:
+                messagebox.showerror("Error", "Not enough shares to sell.")
+
+        self.resume_simulation()  # Resume simulation
+
+    def resume_simulation(self):
+        self.simulation_running = True
+        self.update_stock_price()
+
+def main():
+    root = tk.Tk()
+    app = StockMarketSimulator(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
